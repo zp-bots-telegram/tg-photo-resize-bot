@@ -43,4 +43,4 @@ docker run zackpollard/tg-photo-resize-bot -e "TG_BOT_KEY=bot_api_key_here"
 
 ## License
 
-This project is licensed under the CC0 License - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the Unlicense License - see the [LICENSE.md](LICENSE.md) file for details.
