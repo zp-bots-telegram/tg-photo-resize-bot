@@ -19,9 +19,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s -'
 
 logger = logging.getLogger(__name__)
 
-TYPES = ['image/jpeg','image/png','image/jpg'] # Not sure if jpg is used
-TG_PHOTO_GROUP = os.environ.get('TG_PHOTO_GROUP')
-TG_PHOTO_CHANNEL = os.environ.get('TG_PHOTO_CHANNEL')
+TYPES = ['image/jpeg','image/png','image/jpg'] # Not sure if jpg is us
 
 
 def document_msg_handler(bot, update):
@@ -47,14 +45,6 @@ def document_msg_handler(bot, update):
         print(f.name)
         picmsg = msg.reply_photo(f,
                                  "Original resolution: {}x{}".format(size_x,size_y))
-    if TG_PHOTO_CHANNEL is not None and update.effective_chat.id == TG_PHOTO_GROUP:
-        # Forward the uncompressed and compressed wallpapers to a channel
-        bot.forwardMessage(TG_PHOTO_CHANNEL,
-                           message_id=msg.message_id,
-                           from_chat_id=TG_PHOTO_GROUP)
-        bot.forwardMessage(TG_PHOTO_CHANNEL,
-                           message_id=picmsg.message_id,
-                           from_chat_id=TG_PHOTO_GROUP)
     print(msg.document)
 
 
