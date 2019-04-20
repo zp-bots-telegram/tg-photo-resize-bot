@@ -10,6 +10,8 @@ import os
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import ParseMode
 from PIL import Image
+from fractions import Fraction
+import exifread
 
 
 # Enable logging
@@ -43,8 +45,20 @@ def document_msg_handler(bot, update):
         size_y = str(im.size[1])
         logger.debug("Got image size = {},{}".format(size_x,size_y))
         print(f.name)
+	
+        # EXIF data!
+        ff = open(f.name,'rb')
+        tags = exifread.process_file(ff)
+        logger.debug("Got EXIF data = {}".format(tags))
+        manufacturer = tags["Image Make"]
+        model = tags["Image Model"]
+        iso = tags["EXIF ISOSpeedRatings"]
+        aperture = float(Fraction(str(tags["EXIF FNumber"])))
+        exposure = tags["EXIF ExposureTime"]
+        focal_len = round(float(Fraction(str(tags["EXIF FocalLength"]))))
+
         picmsg = msg.reply_photo(f,
-                                 "Original resolution: {}x{}".format(size_x,size_y))
+                                 "Original resolution: {}x{}; Model: {} {}; Focal Length: {} mm; ISO {}, f/{}, {} s".format(size_x,size_y,manufacturer, model, focal_len, iso, aperture, exposure))
     print(msg.document)
 
 
