@@ -1,5 +1,8 @@
 workflow "Build & Push Containers" {
-  on = "push"
+  on:
+    push:
+      tags:
+        - '1.*'
   resolves = ["GitHub Action for Docker"]
 }
 
