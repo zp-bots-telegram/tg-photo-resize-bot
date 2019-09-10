@@ -11,5 +11,5 @@ action "Docker Registry" {
 action "GitHub Action for Docker" {
   uses = "actions/docker/cli@fe7ed3ce992160973df86480b83a2f8ed581cd50"
   needs = ["Docker Registry"]
-  args = "docker build --tag zackpollard/tg-photo-resize-bot:test-$(date +%s) . && docker push zackpollard/tg-photo-resize-bot:test-$(date +%s)"
+  args = "build -t zackpollard/tg-photo-resize-bot:test-$(date +%s) . && docker push zackpollard/tg-photo-resize-bot:test-$(date +%s)"
 }
