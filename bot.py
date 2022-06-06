@@ -9,6 +9,7 @@ import tempfile
 import os
 from telegram.ext import Updater, MessageHandler, Filters
 from PIL import Image
+from pillow_heif import register_heif_opener
 from fractions import Fraction
 import exifread
 
@@ -19,8 +20,9 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s -'
 
 logger = logging.getLogger(__name__)
 
-TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic']  # Not sure if jpg is us
+TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/heif']  # Not sure if jpg is us
 
+register_heif_opener()
 
 def document_msg_handler(bot, update):
     msg = update.message
@@ -35,24 +37,27 @@ def document_msg_handler(bot, update):
         return
     file_ext = '.' + msg.document.mime_type.split('/', 1)[1]
     with tempfile.NamedTemporaryFile(suffix=file_ext) as f:
-        file_t = bot.getFile(msg.document.file_id)
-        file_t.download(custom_path=f.name)
-        logger.info("Downloaded file from chat {} as {}".format(msg.chat_id, f.name))
+        with tempfile.NamedTemporaryFile(suffix="jpg") as f_send:
+            file_t = bot.getFile(msg.document.file_id)
+            file_t.download(custom_path=f.name)
+            logger.info("Downloaded file from chat {} as {}".format(msg.chat_id, f.name))
 
-        im = Image.open(f.name)
-        size_x = str(im.size[0])
-        size_y = str(im.size[1])
-        logger.debug("Got image size = {},{}".format(size_x, size_y))
+            im = Image.open(f.name)
+            im.save(f_send.name, format="jpeg")
 
-        reply = "Original resolution: {}x{}".format(size_x, size_y)
+            size_x = str(im.size[0])
+            size_y = str(im.size[1])
+            logger.debug("Got image size = {},{}".format(size_x, size_y))
 
-        try:
-            reply += get_exif_data(f.name)
-        except:
-            reply += "; error processing EXIF data :("
+            reply = "Original resolution: {}x{}".format(size_x, size_y)
 
-        picmsg = msg.reply_photo(f, reply)
-        logger.debug("Sent reply: {}".format(picmsg))
+            try:
+                reply += get_exif_data(f.name)
+            except:
+                reply += "; error processing EXIF data :("
+
+            picmsg = msg.reply_photo(f_send, reply)
+            logger.debug("Sent reply: {}".format(picmsg))
 
     logger.info('Replied to chat {} with "{}" and document: {}'.format(msg.chat_id, reply, msg.document))
 
