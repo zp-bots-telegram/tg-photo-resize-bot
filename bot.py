@@ -19,7 +19,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s -'
 
 logger = logging.getLogger(__name__)
 
-TYPES = ['image/jpeg', 'image/png', 'image/jpg']  # Not sure if jpg is us
+TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic']  # Not sure if jpg is us
 
 
 def document_msg_handler(bot, update):
