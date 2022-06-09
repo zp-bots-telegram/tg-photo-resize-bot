@@ -20,6 +20,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s -'
 
 logger = logging.getLogger(__name__)
 
+logger.info("Bot started.")
+
 TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/heif']  # Not sure if jpg is us
 
 register_heif_opener()
@@ -32,9 +34,11 @@ def document_msg_handler(bot, update):
         # We don't want to download if we don't know how big it is
         logger.info("Couldn't see filesize of image at {}".format(msg.date))
         return
-    if msg.document.file_size > 10194304:  # 4MB
-        msg.reply_text('Sorry, image filesize too big')
+    if msg.document.file_size > 2.097e+7:  # 20MB
+        msg.reply_text('Sorry, image filesize too big, 20MB max')
         return
+
+
     file_ext = '.' + msg.document.mime_type.split('/', 1)[1]
     with tempfile.NamedTemporaryFile(suffix=file_ext) as f:
         with tempfile.NamedTemporaryFile(suffix="jpg") as f_send:
@@ -43,11 +47,26 @@ def document_msg_handler(bot, update):
             logger.info("Downloaded file from chat {} as {}".format(msg.chat_id, f.name))
 
             im = Image.open(f.name)
-            im.save(f_send.name, format="jpeg")
-
             size_x = str(im.size[0])
             size_y = str(im.size[1])
-            logger.debug("Got image size = {},{}".format(size_x, size_y))
+
+            logger.info("Got image size = {},{}".format(size_x, size_y))
+
+            if msg.document.file_size > 10194304:  # 10MB
+                resize_divider = 2
+                while True:
+                    new_size_x = int(im.size[0] / resize_divider)
+                    new_size_y = int(im.size[1] / resize_divider)
+                    logger.info("Converting image to {},{}".format(new_size_x, new_size_y))
+                    im_resize = im.resize((new_size_x, new_size_y), Image.ANTIALIAS)
+                    im_resize.save(f_send.name, format="jpeg", quality=95, optimise=True)
+                    resize_divider *= 2
+                    image_size = os.path.getsize(f_send.name)
+                    logger.info("Converted image size bytes = {}".format(image_size))
+                    if image_size < 10194304 or resize_divider > 8:
+                        break
+            else:
+                im.save(f_send.name, format="jpeg")
 
             reply = "Original resolution: {}x{}".format(size_x, size_y)
 
