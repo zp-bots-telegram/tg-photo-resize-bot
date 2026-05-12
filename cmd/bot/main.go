@@ -56,23 +56,29 @@ func main() {
 
 	debug := os.Getenv("TG_DEBUG") == "1"
 
+	// go-telegram/bot v1.20 sends parameterless calls (getMe, logout,
+	// etc.) as POST with `Content-Type: multipart/form-data` but no
+	// actual multipart content. Cloud api.telegram.org tolerates this;
+	// the self-hosted telegram-bot-api server rejects it as a malformed
+	// multipart body. emptyBodyFixTransport strips the Content-Type
+	// header when the request body is empty, which makes the server
+	// treat it as a normal parameterless call.
+	var transport http.RoundTripper = &emptyBodyFixTransport{inner: http.DefaultTransport}
+	if debug {
+		transport = &dumpTransport{inner: transport, log: log, token: token}
+	}
+
 	var opts []bot.Option
 	if apiURL := os.Getenv("TG_API_URL"); apiURL != "" {
 		log.Info("using custom Bot API server", "url", apiURL)
 		opts = append(opts, bot.WithServerURL(apiURL))
 	}
+	opts = append(opts, bot.WithHTTPClient(5*time.Minute, &http.Client{Transport: transport}))
 	if debug {
 		opts = append(opts,
 			bot.WithDebug(),
 			bot.WithDebugHandler(func(format string, args ...any) {
 				log.Info("bot debug", "msg", strings.TrimRight(fmt.Sprintf(format, args...), "\n"))
-			}),
-			bot.WithHTTPClient(5*time.Minute, &http.Client{
-				Transport: &dumpTransport{
-					inner: http.DefaultTransport,
-					log:   log,
-					token: token,
-				},
 			}),
 		)
 	}
@@ -122,3 +128,44 @@ func (d *dumpTransport) mask(s string) string {
 	}
 	return strings.ReplaceAll(s, d.token, "<TOKEN>")
 }
+
+// emptyBodyFixTransport peeks one byte from the request body. If it's
+// empty, it strips the (bogus) Content-Type header and forwards the
+// request with a real empty body. Non-empty bodies pass through with
+// the peeked byte re-prepended.
+type emptyBodyFixTransport struct {
+	inner http.RoundTripper
+}
+
+func (t *emptyBodyFixTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Body == nil || req.Body == http.NoBody {
+		return t.inner.RoundTrip(req)
+	}
+	peek := make([]byte, 1)
+	n, err := io.ReadFull(req.Body, peek)
+	if n == 0 {
+		_ = req.Body.Close()
+		req.Header.Del("Content-Type")
+		req.Body = http.NoBody
+		req.ContentLength = 0
+		return t.inner.RoundTrip(req)
+	}
+	// Non-empty body. Reconstitute by prepending the peeked byte.
+	rest := req.Body
+	req.Body = &prependReadCloser{
+		Reader: io.MultiReader(bytes.NewReader(peek[:n]), rest),
+		closer: rest,
+	}
+	resp, rtErr := t.inner.RoundTrip(req)
+	if err != nil && err != io.EOF {
+		return resp, err
+	}
+	return resp, rtErr
+}
+
+type prependReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (p *prependReadCloser) Close() error { return p.closer.Close() }
