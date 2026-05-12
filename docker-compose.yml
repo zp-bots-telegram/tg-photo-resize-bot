@@ -23,8 +23,8 @@ services:
     image: aiogram/telegram-bot-api:latest
     restart: unless-stopped
     environment:
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID:?Set TELEGRAM_API_ID in the environment}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:?Set TELEGRAM_API_HASH in the environment}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
       # Set TELEGRAM_LOCAL=1 if you want the bot to read files directly
       # from the shared mount (skip HTTP). Requires the mount on the
       # `bot` service to be uncommented too.
@@ -49,7 +49,7 @@ services:
       telegram-bot-api:
         condition: service_started
     environment:
-      TG_BOT_KEY: ${TG_BOT_KEY:?Set TG_BOT_KEY in the environment}
+      TG_BOT_KEY: ${TG_BOT_KEY}
       TG_API_URL: http://telegram-bot-api:8081
       # Raise to take advantage of the lifted getFile limit. 50 MB is
       # a sane default; bump higher if your users actually hit it.
