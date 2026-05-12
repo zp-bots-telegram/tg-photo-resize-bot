@@ -77,16 +77,15 @@ func Process(orig []byte, mime string) (*Result, error) {
 }
 
 func encodeLoop(orig []byte, startScale float64) ([]byte, int, int, error) {
+	// Start at Q100 so Telegram's server-side re-encoder gets the
+	// cleanest possible source. Empirically the PSNR delta between
+	// Q80→TG and Q100→TG on a synthetic mixed-content 2560×1920 image
+	// was 0.03 dB (well below the JND), but going high costs only our
+	// upload bandwidth and avoids stacking generation loss on photos
+	// where the input quality might matter more.
 	scale := startScale
 	for halvings := 0; halvings <= MaxHalvings; halvings++ {
-		startQ := 95
-		if halvings > 0 || startScale < 1.0 {
-			// We've already reduced dimensions (either to fit
-			// MaxStoredEdge or via halving); start a touch lower since
-			// most of the quality budget is already spent.
-			startQ = 90
-		}
-		for q := startQ; q >= 80; q -= 5 {
+		for q := 100; q >= 80; q -= 5 {
 			out, w, h, err := encodeOnce(orig, scale, q)
 			if err != nil {
 				return nil, 0, 0, err
