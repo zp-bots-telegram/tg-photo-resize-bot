@@ -18,8 +18,15 @@ docker run --rm -e TG_BOT_KEY=your_bot_api_token \
   ghcr.io/zp-bots-telegram/tg-photo-resize-bot:latest
 ```
 
-PR builds publish under `ghcr.io/zp-bots-telegram/tg-photo-resize-bot:pr-<num>`
-so a branch can be pulled and tested before merge.
+### Image tags
+
+| Tag | Meaning |
+|-----|---------|
+| `latest`  | Highest released semver |
+| `1.2.3` / `1.2` / `1` | Specific release versions |
+| `edge`    | Latest commit on `main` (unreleased) |
+| `pr-<N>`  | Build from pull request #N |
+| `sha-<short>` | Build from a specific commit |
 
 ### Environment variables
 
@@ -33,6 +40,23 @@ state, or read any configuration files.
 ## Commands
 
 - `/start`, `/help` — short usage message.
+
+## Releases
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please).
+On every merge to `main` it opens (or updates) a "Release v*x.y.z*" PR
+that bumps the version and updates `CHANGELOG.md` based on
+[Conventional Commits](https://www.conventionalcommits.org/). Merging
+that PR creates a git tag and GitHub release, which the CI workflow
+picks up and publishes as `:x.y.z` / `:x.y` / `:x` / `:latest`.
+
+Commit message types that drive a release:
+- `feat:` — minor bump
+- `fix:` — patch bump
+- `feat!:` / `BREAKING CHANGE:` — major bump
+
+Other types (`refactor:`, `perf:`, `docs:`, `ci:`, `chore:`, `test:`, `build:`)
+appear in the changelog but do not bump the version on their own.
 
 ## Build
 
