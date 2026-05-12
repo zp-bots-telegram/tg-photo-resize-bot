@@ -10,12 +10,16 @@ stays in the chat for anyone who wants the full-quality version.
 
 ## Running
 
-The bot is published as a Docker image and reads a single environment
-variable.
+The bot is published as a multi-arch (amd64 + arm64) Docker image on
+GitHub Container Registry and reads a single environment variable.
 
 ```shell
-docker run --rm -e TG_BOT_KEY=your_bot_api_token zackpollard/tg-photo-resize-bot
+docker run --rm -e TG_BOT_KEY=your_bot_api_token \
+  ghcr.io/zp-bots-telegram/tg-photo-resize-bot:latest
 ```
+
+PR builds publish under `ghcr.io/zp-bots-telegram/tg-photo-resize-bot:pr-<num>`
+so a branch can be pulled and tested before merge.
 
 ### Environment variables
 
@@ -66,8 +70,8 @@ TG_BOT_KEY=... ./bot
 
 ## Find Us
 
-- [GitHub](https://github.com/zackpollard/tg-photo-resize-bot)
-- [DockerHub](https://hub.docker.com/r/zackpollard/tg-photo-resize-bot)
+- [GitHub](https://github.com/zp-bots-telegram/tg-photo-resize-bot)
+- [Container image](https://github.com/zp-bots-telegram/tg-photo-resize-bot/pkgs/container/tg-photo-resize-bot)
 
 ## License
 
