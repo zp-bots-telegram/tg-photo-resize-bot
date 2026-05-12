@@ -13,8 +13,15 @@ import (
 const (
 	MaxInputBytes = 20 * 1024 * 1024
 	TargetBytes   = 10 * 1024 * 1024
-	MaxEdge       = 10000
-	MaxHalvings   = 4
+	// MaxStoredEdge is the long-edge size Telegram's bot pipeline will
+	// actually keep for a photo: empirically 2560 (the `w` PhotoSize).
+	// Anything larger gets silently downsampled by Telegram, so we do
+	// the resize ourselves to control the resampler and save bandwidth.
+	MaxStoredEdge = 2560
+	// MaxTotalDims is the hard reject threshold: sendPhoto returns
+	// PHOTO_INVALID_DIMENSIONS when width + height exceeds this.
+	MaxTotalDims = 10000
+	MaxHalvings  = 4
 )
 
 // ErrUncompressible is returned when the encode loop cannot bring the
@@ -31,9 +38,9 @@ type Result struct {
 }
 
 // Process decodes the input, decides whether it can be returned
-// verbatim, and otherwise re-encodes as JPEG fitting TargetBytes /
-// MaxEdge. mime is the declared MIME type and is used to gate the
-// pass-through path.
+// verbatim, and otherwise re-encodes as JPEG fitting MaxStoredEdge
+// and TargetBytes. mime is the declared MIME type and is used to
+// gate the pass-through path.
 func Process(orig []byte, mime string) (*Result, error) {
 	img, err := vips.NewImageFromBuffer(orig)
 	if err != nil {
@@ -44,18 +51,19 @@ func Process(orig []byte, mime string) (*Result, error) {
 	origW := img.Width()
 	origH := img.Height()
 
-	if isJPEG(mime) && len(orig) <= TargetBytes && maxEdge(origW, origH) <= MaxEdge {
+	if isJPEG(mime) && len(orig) <= TargetBytes && longEdge(origW, origH) <= MaxStoredEdge {
 		return &Result{
 			Bytes:       orig,
 			Width:       origW,
 			Height:      origH,
 			OrigWidth:   origW,
-			OrigHeight: origH,
+			OrigHeight:  origH,
 			PassThrough: true,
 		}, nil
 	}
 
-	out, w, h, err := encodeLoop(orig, origW, origH)
+	initialScale := scaleToFit(origW, origH, MaxStoredEdge)
+	out, w, h, err := encodeLoop(orig, initialScale)
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +76,14 @@ func Process(orig []byte, mime string) (*Result, error) {
 	}, nil
 }
 
-func encodeLoop(orig []byte, origW, origH int) ([]byte, int, int, error) {
-	scale := 1.0
+func encodeLoop(orig []byte, startScale float64) ([]byte, int, int, error) {
+	scale := startScale
 	for halvings := 0; halvings <= MaxHalvings; halvings++ {
 		startQ := 95
-		if halvings > 0 {
+		if halvings > 0 || startScale < 1.0 {
+			// We've already reduced dimensions (either to fit
+			// MaxStoredEdge or via halving); start a touch lower since
+			// most of the quality budget is already spent.
 			startQ = 90
 		}
 		for q := startQ; q >= 80; q -= 5 {
@@ -80,14 +91,12 @@ func encodeLoop(orig []byte, origW, origH int) ([]byte, int, int, error) {
 			if err != nil {
 				return nil, 0, 0, err
 			}
-			if len(out) <= TargetBytes && maxEdge(w, h) <= MaxEdge {
+			if len(out) <= TargetBytes && w+h <= MaxTotalDims {
 				return out, w, h, nil
 			}
 		}
 		scale *= 0.5
 	}
-	_ = origW
-	_ = origH
 	return nil, 0, 0, ErrUncompressible
 }
 
@@ -124,9 +133,17 @@ func isJPEG(mime string) bool {
 	return mime == "image/jpeg" || mime == "image/jpg"
 }
 
-func maxEdge(w, h int) int {
+func longEdge(w, h int) int {
 	if w > h {
 		return w
 	}
 	return h
+}
+
+func scaleToFit(w, h, maxEdge int) float64 {
+	long := longEdge(w, h)
+	if long <= maxEdge {
+		return 1.0
+	}
+	return float64(maxEdge) / float64(long)
 }

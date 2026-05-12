@@ -112,9 +112,10 @@ func TestProcess_LargeJPEG_Recoded(t *testing.T) {
 	}
 }
 
-func TestProcess_LargeJPEG_RetainsResolutionWhenPossible(t *testing.T) {
-	// Compressible content (single colour gradient) → quality drop alone
-	// should suffice; dimensions should be untouched.
+func TestProcess_OversizeJPEG_DownscaledToStoredEdge(t *testing.T) {
+	// 4000x3000 source is above the bot-photo stored cap of 2560 long edge.
+	// Telegram would downsample it anyway; we do it ourselves first so the
+	// resampler quality is controlled and the upload is smaller.
 	img := image.NewRGBA(image.Rect(0, 0, 4000, 3000))
 	for y := 0; y < 3000; y++ {
 		for x := 0; x < 4000; x++ {
@@ -130,12 +131,32 @@ func TestProcess_LargeJPEG_RetainsResolutionWhenPossible(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process: %v", err)
 	}
-	if res.Width != 4000 || res.Height != 3000 {
-		// If it was downscaled it means we tried halving — acceptable but
-		// not preferred for content this compressible.
-		t.Logf("note: dims changed to %dx%d (input was easy to compress; quality drop should have been enough)", res.Width, res.Height)
+	if res.OrigWidth != 4000 || res.OrigHeight != 3000 {
+		t.Fatalf("orig dims should be preserved in Result: got %dx%d", res.OrigWidth, res.OrigHeight)
+	}
+	if longEdge(res.Width, res.Height) > MaxStoredEdge {
+		t.Fatalf("output %dx%d exceeds MaxStoredEdge=%d", res.Width, res.Height, MaxStoredEdge)
 	}
 	if len(res.Bytes) > TargetBytes {
 		t.Fatalf("output %d > target %d", len(res.Bytes), TargetBytes)
+	}
+}
+
+func TestProcess_JPEGAtStoredCap_PassesThrough(t *testing.T) {
+	// 2560 long edge JPEG is right at the stored cap — should pass through
+	// without re-encoding on our side.
+	orig := makeJPEG(t, 2560, 1920, 90, 3)
+	if len(orig) > TargetBytes {
+		t.Skipf("fixture too big to test pass-through: %d", len(orig))
+	}
+	res, err := Process(orig, "image/jpeg")
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if !res.PassThrough {
+		t.Fatalf("expected pass-through at the stored cap, got re-encoded")
+	}
+	if !bytes.Equal(res.Bytes, orig) {
+		t.Fatalf("pass-through bytes should equal input")
 	}
 }
