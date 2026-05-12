@@ -22,17 +22,23 @@ import (
 	"github.com/zackpollard/tg-photo-resize-bot/internal/pipeline"
 )
 
-const helpText = `Send me a photo as a document and I'll reply with a compressed in-chat preview plus the original resolution and EXIF info.
-
-Supported: JPEG, PNG, HEIC. Max 20 MB.`
-
-type Handler struct {
-	log  *slog.Logger
-	sem  *semaphore.Weighted
-	http *http.Client
+type Config struct {
+	// MaxInputBytes caps the document size the bot will accept and download.
+	// Defaults to pipeline.MaxInputBytes (20 MB) which matches the cloud
+	// Bot API getFile limit. With a self-hosted telegram-bot-api server
+	// this can be raised up to 2 GB.
+	MaxInputBytes int
 }
 
-func New(log *slog.Logger) *Handler {
+type Handler struct {
+	log           *slog.Logger
+	sem           *semaphore.Weighted
+	http          *http.Client
+	maxInputBytes int
+	helpText      string
+}
+
+func New(log *slog.Logger, cfg Config) *Handler {
 	workers := runtime.GOMAXPROCS(0)
 	if workers > 4 {
 		workers = 4
@@ -40,10 +46,19 @@ func New(log *slog.Logger) *Handler {
 	if workers < 1 {
 		workers = 1
 	}
+	maxIn := cfg.MaxInputBytes
+	if maxIn <= 0 {
+		maxIn = pipeline.MaxInputBytes
+	}
 	return &Handler{
-		log:  log,
-		sem:  semaphore.NewWeighted(int64(workers)),
-		http: &http.Client{Timeout: 60 * time.Second},
+		log:           log,
+		sem:           semaphore.NewWeighted(int64(workers)),
+		http:          &http.Client{Timeout: 5 * time.Minute},
+		maxInputBytes: maxIn,
+		helpText: fmt.Sprintf(
+			"Send me a photo as a document and I'll reply with a compressed in-chat preview plus the original resolution and EXIF info.\n\nSupported: JPEG, PNG, HEIC. Max %d MB.",
+			maxIn/(1024*1024),
+		),
 	}
 }
 
@@ -78,7 +93,7 @@ func (h *Handler) help(ctx context.Context, b *bot.Bot, update *models.Update) {
 	}
 	if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: update.Message.Chat.ID,
-		Text:   helpText,
+		Text:   h.helpText,
 	}); err != nil {
 		h.log.Warn("help send failed", "err", err)
 	}
@@ -99,8 +114,8 @@ func (h *Handler) onDocument(ctx context.Context, b *bot.Bot, update *models.Upd
 		h.reply(ctx, b, msg, "Couldn't determine file size — try resending.")
 		return
 	}
-	if doc.FileSize > pipeline.MaxInputBytes {
-		h.reply(ctx, b, msg, "Sorry, that's over 20 MB. Telegram won't let me download files larger than that.")
+	if int(doc.FileSize) > h.maxInputBytes {
+		h.reply(ctx, b, msg, fmt.Sprintf("Sorry, that's over %d MB. I can't download files larger than that.", h.maxInputBytes/(1024*1024)))
 		return
 	}
 
@@ -198,12 +213,12 @@ func (h *Handler) download(ctx context.Context, b *bot.Bot, fileID string) ([]by
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download status %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, pipeline.MaxInputBytes+1))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(h.maxInputBytes)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > pipeline.MaxInputBytes {
-		return nil, fmt.Errorf("file exceeds %d byte cap", pipeline.MaxInputBytes)
+	if len(data) > h.maxInputBytes {
+		return nil, fmt.Errorf("file exceeds %d byte cap", h.maxInputBytes)
 	}
 	return data, nil
 }

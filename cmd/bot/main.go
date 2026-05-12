@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/davidbyttow/govips/v2/vips"
@@ -35,9 +36,23 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	h := handler.New(log)
+	cfg := handler.Config{}
+	if s := os.Getenv("TG_MAX_INPUT_BYTES"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			log.Error("TG_MAX_INPUT_BYTES must be a positive integer", "value", s)
+			os.Exit(1)
+		}
+		cfg.MaxInputBytes = n
+	}
+	h := handler.New(log, cfg)
 
-	b, err := bot.New(token)
+	var opts []bot.Option
+	if apiURL := os.Getenv("TG_API_URL"); apiURL != "" {
+		log.Info("using custom Bot API server", "url", apiURL)
+		opts = append(opts, bot.WithServerURL(apiURL))
+	}
+	b, err := bot.New(token, opts...)
 	if err != nil {
 		log.Error("bot.New failed", "err", err)
 		os.Exit(1)
