@@ -14,17 +14,18 @@ services:
     expose:
       - "8081"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8082/health || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
+      start_period: 30s
 
   bot:
     image: ghcr.io/zp-bots-telegram/tg-photo-resize-bot:latest
     restart: unless-stopped
     depends_on:
       telegram-bot-api:
-        condition: service_started
+        condition: service_healthy
     environment:
       TG_BOT_KEY: "123456789:AAEXAMPLEbotapitokenfromBotFather"
       TG_API_URL: http://telegram-bot-api:8081
