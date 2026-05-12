@@ -1,0 +1,13 @@
+.git
+.idea
+.vscode
+.gitignore
+.dockerignore
+README.md
+LICENSE
+bot.py
+requirements.txt
+*.test
+*.out
+/bot
+/bin/
