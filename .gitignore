@@ -16,3 +16,6 @@
 
 # Local env
 .env
+
+# Runtime data for docker-compose stack
+/data/
