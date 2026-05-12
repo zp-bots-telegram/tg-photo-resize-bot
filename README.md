@@ -35,6 +35,7 @@ docker run --rm -e TG_BOT_KEY=your_bot_api_token \
 | `TG_BOT_KEY` | yes | Telegram Bot API token |
 | `TG_API_URL` | no | Override the Bot API endpoint. Defaults to `https://api.telegram.org`. Point at a self-hosted [`telegram-bot-api`](https://github.com/tdlib/telegram-bot-api) server to lift the 20 MB `getFile` limit. |
 | `TG_MAX_INPUT_BYTES` | no | Maximum accepted document size, in bytes. Defaults to 20 MB (the cloud Bot API `getFile` cap). Raise when running against a self-hosted Bot API server. |
+| `TG_DEBUG` | no | Set to `1` to dump every Bot API HTTP request + response body to the log. Diagnostic only — leaves the bot token masked in output. |
 
 The bot uses long-polling. It does not expose any ports, write any
 state, or read any configuration files.

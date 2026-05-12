@@ -1,12 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httputil"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/go-telegram/bot"
@@ -47,10 +54,27 @@ func main() {
 	}
 	h := handler.New(log, cfg)
 
+	debug := os.Getenv("TG_DEBUG") == "1"
+
 	var opts []bot.Option
 	if apiURL := os.Getenv("TG_API_URL"); apiURL != "" {
 		log.Info("using custom Bot API server", "url", apiURL)
 		opts = append(opts, bot.WithServerURL(apiURL))
+	}
+	if debug {
+		opts = append(opts,
+			bot.WithDebug(),
+			bot.WithDebugHandler(func(format string, args ...any) {
+				log.Info("bot debug", "msg", strings.TrimRight(fmt.Sprintf(format, args...), "\n"))
+			}),
+			bot.WithHTTPClient(5*time.Minute, &http.Client{
+				Transport: &dumpTransport{
+					inner: http.DefaultTransport,
+					log:   log,
+					token: token,
+				},
+			}),
+		)
 	}
 	b, err := bot.New(token, opts...)
 	if err != nil {
@@ -62,4 +86,39 @@ func main() {
 	log.Info("bot started")
 	b.Start(ctx)
 	log.Info("bot stopped")
+}
+
+// dumpTransport logs every HTTP request and response the bot library
+// makes. Enabled by TG_DEBUG=1. Bodies are dumped verbatim; the bot
+// token is masked so log lines stay shareable.
+type dumpTransport struct {
+	inner http.RoundTripper
+	log   *slog.Logger
+	token string
+}
+
+func (d *dumpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	reqDump, _ := httputil.DumpRequestOut(req, true)
+	d.log.Info("http request", "dump", d.mask(string(reqDump)))
+
+	resp, err := d.inner.RoundTrip(req)
+	if err != nil {
+		d.log.Error("http transport error", "err", err)
+		return resp, err
+	}
+	// DumpResponse consumes the body; replace it so the caller can read it.
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	respDump, _ := httputil.DumpResponse(resp, false)
+	d.log.Info("http response", "status", resp.Status, "headers", d.mask(string(respDump)), "body", d.mask(string(body)))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	return resp, nil
+}
+
+func (d *dumpTransport) mask(s string) string {
+	if d.token == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, d.token, "<TOKEN>")
 }
