@@ -1,6 +1,6 @@
-// Package pipeline turns an input image into a JPEG that fits within
-// Telegram's sendPhoto limits, preserving the original bytes when
-// possible to avoid generational quality loss.
+// Package pipeline prepares an input image for sendPhoto, preserving
+// the original bytes when they already fit Telegram's upload limits
+// and re-encoding only when necessary.
 package pipeline
 
 import (
@@ -12,14 +12,15 @@ import (
 
 const (
 	MaxInputBytes = 20 * 1024 * 1024
-	TargetBytes   = 10 * 1024 * 1024
-	// MaxStoredEdge is the long-edge size Telegram's bot pipeline will
-	// actually keep for a photo: empirically 2560 (the `w` PhotoSize).
-	// Anything larger gets silently downsampled by Telegram, so we do
-	// the resize ourselves to control the resampler and save bandwidth.
-	MaxStoredEdge = 2560
-	// MaxTotalDims is the hard reject threshold: sendPhoto returns
+	// TargetBytes is the sendPhoto multipart upload cap.
+	TargetBytes = 10 * 1024 * 1024
+	// MaxTotalDims is the rejection threshold: sendPhoto returns
 	// PHOTO_INVALID_DIMENSIONS when width + height exceeds this.
+	// Anything up to but not exceeding this sum is accepted; Telegram
+	// stores a downsampled `w` PhotoSize (long edge 2560) but its own
+	// downsampler has access to all the pixels we upload, so passing
+	// through the full resolution typically yields a better final
+	// preview than pre-resizing on our side.
 	MaxTotalDims = 10000
 	MaxHalvings  = 4
 )
@@ -37,10 +38,15 @@ type Result struct {
 	PassThrough bool
 }
 
-// Process decodes the input, decides whether it can be returned
-// verbatim, and otherwise re-encodes as JPEG fitting MaxStoredEdge
-// and TargetBytes. mime is the declared MIME type and is used to
-// gate the pass-through path.
+// Process decides whether the input can be sent as-is to sendPhoto
+// and otherwise re-encodes it to fit MaxTotalDims and TargetBytes.
+//
+// Pass-through eligibility: the format is one sendPhoto accepts
+// (JPEG or PNG), the upload fits TargetBytes, and the dimension sum
+// fits MaxTotalDims. In that case the bytes are forwarded verbatim
+// — Telegram's own re-encode and downsample step then determines
+// the stored quality, and giving it the full-resolution source
+// generally beats pre-resizing ourselves.
 func Process(orig []byte, mime string) (*Result, error) {
 	img, err := vips.NewImageFromBuffer(orig)
 	if err != nil {
@@ -51,7 +57,7 @@ func Process(orig []byte, mime string) (*Result, error) {
 	origW := img.Width()
 	origH := img.Height()
 
-	if isJPEG(mime) && len(orig) <= TargetBytes && longEdge(origW, origH) <= MaxStoredEdge {
+	if sendPhotoAccepts(mime) && len(orig) <= TargetBytes && origW+origH <= MaxTotalDims {
 		return &Result{
 			Bytes:       orig,
 			Width:       origW,
@@ -62,7 +68,11 @@ func Process(orig []byte, mime string) (*Result, error) {
 		}, nil
 	}
 
-	initialScale := scaleToFit(origW, origH, MaxStoredEdge)
+	// Need to encode: HEIC source, oversized dimensions, or oversized
+	// upload. Seed with the smallest scale needed to fit MaxTotalDims;
+	// the loop drops quality (and ultimately scale) further if the
+	// encoded bytes still exceed TargetBytes.
+	initialScale := scaleToFitTotalDims(origW, origH, MaxTotalDims)
 	out, w, h, err := encodeLoop(orig, initialScale)
 	if err != nil {
 		return nil, err
@@ -128,21 +138,18 @@ func encodeOnce(orig []byte, scale float64, quality int) ([]byte, int, int, erro
 	return out, img.Width(), img.Height(), nil
 }
 
-func isJPEG(mime string) bool {
-	return mime == "image/jpeg" || mime == "image/jpg"
-}
-
-func longEdge(w, h int) int {
-	if w > h {
-		return w
+func sendPhotoAccepts(mime string) bool {
+	switch mime {
+	case "image/jpeg", "image/jpg", "image/png":
+		return true
 	}
-	return h
+	return false
 }
 
-func scaleToFit(w, h, maxEdge int) float64 {
-	long := longEdge(w, h)
-	if long <= maxEdge {
+func scaleToFitTotalDims(w, h, maxSum int) float64 {
+	sum := w + h
+	if sum <= maxSum {
 		return 1.0
 	}
-	return float64(maxEdge) / float64(long)
+	return float64(maxSum) / float64(sum)
 }
