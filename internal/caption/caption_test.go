@@ -7,15 +7,20 @@ import (
 	"github.com/zackpollard/tg-photo-resize-bot/internal/exifx"
 )
 
-func TestRender_DimensionsOnlyWhenNoExif(t *testing.T) {
+func TestRender_ResolutionAlwaysPresent(t *testing.T) {
 	got := Render(4000, 3000, exifx.Tags{})
-	want := "Original: 4000×3000"
-	if got != want {
-		t.Errorf("got %q want %q", got, want)
+	if !strings.HasPrefix(got, "<pre>") || !strings.HasSuffix(got, "</pre>") {
+		t.Errorf("expected <pre>...</pre> envelope: %q", got)
+	}
+	if !strings.Contains(got, "Resolution") {
+		t.Errorf("missing Resolution label: %q", got)
+	}
+	if !strings.Contains(got, "4000×3000") {
+		t.Errorf("missing dims: %q", got)
 	}
 }
 
-func TestRender_FullExifBlock(t *testing.T) {
+func TestRender_FullMetadataBlock(t *testing.T) {
 	got := Render(6000, 4000, exifx.Tags{
 		Make:         "SONY",
 		Model:        "ILCE-7M3",
@@ -25,13 +30,15 @@ func TestRender_FullExifBlock(t *testing.T) {
 		ExposureTime: "1/250",
 	})
 
-	if !strings.HasPrefix(got, "Original: 6000×4000\n\n<pre>") {
-		t.Errorf("missing header / <pre> start: %q", got)
+	if !strings.HasPrefix(got, "<pre>") {
+		t.Errorf("missing <pre> start: %q", got)
 	}
 	if !strings.HasSuffix(got, "</pre>") {
 		t.Errorf("missing </pre>: %q", got)
 	}
 	for _, want := range []string{
+		"Resolution",
+		"6000×4000",
 		"Camera",
 		"SONY ILCE-7M3",
 		"ISO",
@@ -61,6 +68,9 @@ func TestRender_OmitsMissingFields(t *testing.T) {
 	}
 	if !strings.Contains(got, "ISO") {
 		t.Errorf("ISO line should be present: %q", got)
+	}
+	if !strings.Contains(got, "Resolution") {
+		t.Errorf("Resolution line should always be present: %q", got)
 	}
 }
 

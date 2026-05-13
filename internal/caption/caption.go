@@ -11,18 +11,14 @@ import (
 )
 
 // Render returns the caption for an image with the given original
-// dimensions and EXIF tags. Missing EXIF fields are skipped; if no
-// fields are present, only the dimensions line is returned.
+// dimensions and EXIF tags. Output is a single <pre> metadata block:
+// the original resolution is always present, EXIF fields are added
+// when available.
 func Render(origW, origH int, t exifx.Tags) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Original: %d×%d", origW, origH)
-	if t.Empty() {
-		return b.String()
-	}
-	b.WriteString("\n\n<pre>")
-
 	type line struct{ label, value string }
-	var lines []line
+	lines := []line{
+		{"Resolution", fmt.Sprintf("%d×%d", origW, origH)},
+	}
 
 	if cam := joinNonEmpty(" ", t.Make, t.Model); cam != "" {
 		lines = append(lines, line{"Camera", cam})
@@ -44,6 +40,9 @@ func Render(origW, origH int, t exifx.Tags) string {
 			width = n
 		}
 	}
+
+	var b strings.Builder
+	b.WriteString("<pre>")
 	for i, l := range lines {
 		if i > 0 {
 			b.WriteString("\n")
