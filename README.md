@@ -1,46 +1,113 @@
 # Telegram Photo Resize Bot
 
-A bot that takes any photo (<4MB) that is uploaded as a document and re-uploads it as a compressed version so that a preview is shown in the telegram client
+A Telegram bot that turns photo *documents* (JPEG/PNG/HEIC) into compressed
+in-chat previews captioned with the original resolution and EXIF metadata
+(camera, ISO, lens, shutter).
 
-## Getting Started
+Send a photo as a file in a chat the bot is in. The bot replies with a
+preview that Telegram will display inline, while the original document
+stays in the chat for anyone who wants the full-quality version.
 
-These instructions will cover usage information and prerequisites for the docker container 
+## Running
 
-### Prerequisities
-
-In order to run this container you'll need docker installed.
-
-* [Windows](https://docs.docker.com/windows/started)
-* [OS X](https://docs.docker.com/mac/started/)
-* [Linux](https://docs.docker.com/linux/started/)
-
-### Usage
-
-#### Container Parameters
-
-List the different parameters available to your container
+The bot is published as a multi-arch (amd64 + arm64) Docker image on
+GitHub Container Registry and reads a single environment variable.
 
 ```shell
-docker run zackpollard/tg-photo-resize-bot -e "TG_BOT_KEY=bot_api_key_here"
+docker run --rm -e TG_BOT_KEY=your_bot_api_token \
+  ghcr.io/zp-bots-telegram/tg-photo-resize-bot:latest
 ```
 
-#### Environment Variables
+### Image tags
 
-* `TG_BOT_KEY` - The Telegram Bot API key that will be used by this bot
+| Tag | Meaning |
+|-----|---------|
+| `latest`  | Highest released semver |
+| `1.2.3` / `1.2` / `1` | Specific release versions |
+| `edge`    | Latest commit on `main` (unreleased) |
+| `pr-<N>`  | Build from pull request #N |
+| `sha-<short>` | Build from a specific commit |
+
+### Environment variables
+
+| Name | Required | Purpose |
+|------|----------|---------|
+| `TG_BOT_KEY` | yes | Telegram Bot API token |
+| `TG_API_URL` | no | Override the Bot API endpoint. Defaults to `https://api.telegram.org`. Point at a self-hosted [`telegram-bot-api`](https://github.com/tdlib/telegram-bot-api) server to lift the 20 MB `getFile` limit. |
+| `TG_MAX_INPUT_BYTES` | no | Maximum accepted document size, in bytes. Defaults to 20 MB (the cloud Bot API `getFile` cap). Raise when running against a self-hosted Bot API server. |
+| `TG_DEBUG` | no | Set to `1` to dump every Bot API HTTP request + response body to the log. Diagnostic only — leaves the bot token masked in output. |
+
+The bot uses long-polling. It does not expose any ports, write any
+state, or read any configuration files.
+
+### Optional: self-hosted Bot API server
+
+A bundled `docker-compose.yml` runs the bot alongside the official
+self-hosted [`telegram-bot-api`](https://github.com/tdlib/telegram-bot-api)
+server. Benefits: `getFile` up to 2 GB, no `api.telegram.org` rate
+limits, faster transfers, optional zero-copy filesystem mode. See
+the comments at the top of `docker-compose.yml` for setup.
+
+## Commands
+
+- `/start`, `/help` — short usage message.
+
+## Releases
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please).
+On every merge to `main` it opens (or updates) a "Release v*x.y.z*" PR
+that bumps the version and updates `CHANGELOG.md` based on
+[Conventional Commits](https://www.conventionalcommits.org/). Merging
+that PR creates a git tag and GitHub release, which the CI workflow
+picks up and publishes as `:x.y.z` / `:x.y` / `:x` / `:latest`.
+
+Commit message types that drive a release:
+- `feat:` — minor bump
+- `fix:` — patch bump
+- `feat!:` / `BREAKING CHANGE:` — major bump
+
+Other types (`refactor:`, `perf:`, `docs:`, `ci:`, `chore:`, `test:`, `build:`)
+appear in the changelog but do not bump the version on their own.
+
+## Build
+
+```shell
+docker build -t tg-photo-resize-bot .
+```
+
+### Local development
+
+The bot uses [libvips](https://www.libvips.org/) (via
+[govips](https://github.com/davidbyttow/govips)) for image processing
+and [libheif](https://github.com/strukturag/libheif) for HEIC decoding.
+To build outside Docker you need both system libraries.
+
+```shell
+# macOS
+brew install vips libheif
+
+# Debian / Ubuntu
+sudo apt-get install libvips-dev libheif-dev pkg-config
+
+# Build & test
+go test ./...
+go build ./cmd/bot
+TG_BOT_KEY=... ./bot
+```
 
 ## Built With
 
-* python, dependencies can be found in requirements.txt
+- [Go](https://go.dev/)
+- [go-telegram/bot](https://github.com/go-telegram/bot) — Telegram Bot API client
+- [govips](https://github.com/davidbyttow/govips) — libvips bindings
+- [go-exif](https://github.com/dsoprea/go-exif) — EXIF parsing
+- [go-heic-exif-extractor](https://github.com/dsoprea/go-heic-exif-extractor) — HEIC EXIF support
 
 ## Find Us
 
-* [GitHub](https://github.com/zackpollard/tg-photo-resize-bot)
-* [DockerHub](https://hub.docker.com/r/zackpollard/tg-photo-resize-bot)
-
-## Authors
-
-* **Zack Pollard** - *Maintainance and Conversion to Docker*
+- [GitHub](https://github.com/zp-bots-telegram/tg-photo-resize-bot)
+- [Container image](https://github.com/zp-bots-telegram/tg-photo-resize-bot/pkgs/container/tg-photo-resize-bot)
 
 ## License
 
-This project is licensed under the Unlicense License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Unlicense License — see the [LICENSE](LICENSE) file.

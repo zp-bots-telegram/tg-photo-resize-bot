@@ -1,14 +1,23 @@
-FROM python:3.9-alpine AS build-env
-RUN mkdir /install
-WORKDIR /bot
-RUN apk --no-cache add build-base libffi-dev openssl-dev zlib-dev jpeg-dev
-ADD requirements.txt .
-RUN pip install --prefix=/install -r requirements.txt
+FROM golang:1.25-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      pkg-config \
+      libvips-dev \
+      libheif-dev \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
+      -o /out/bot ./cmd/bot
 
-FROM python:3.9-alpine
-RUN apk add libjpeg-turbo
-COPY --from=build-env /install /usr/local
-WORKDIR /bot
-ADD bot.py . 
-
-CMD [ "python", "./bot.py" ]
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libvips42 \
+      libheif1 \
+      ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -r -u 10001 -g nogroup bot
+COPY --from=build /out/bot /usr/local/bin/bot
+USER bot
+ENTRYPOINT ["/usr/local/bin/bot"]
