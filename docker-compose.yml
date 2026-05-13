@@ -9,6 +9,9 @@ services:
     environment:
       TELEGRAM_API_ID: "1234567"
       TELEGRAM_API_HASH: "0123456789abcdef0123456789abcdef"
+      # Local mode unlocks getFile up to 2 GB by returning an absolute
+      # filesystem path the bot reads from disk (shared volume below).
+      TELEGRAM_LOCAL: "1"
     volumes:
       - ./data/bot-api:/var/lib/telegram-bot-api
     expose:
@@ -30,3 +33,7 @@ services:
       TG_BOT_KEY: "123456789:AAEXAMPLEbotapitokenfromBotFather"
       TG_API_URL: http://telegram-bot-api:8081
       TG_MAX_INPUT_BYTES: "52428800"
+    volumes:
+      # Same path the bot-api server writes to, so absolute file paths
+      # from getFile resolve inside this container too. Read-only.
+      - ./data/bot-api:/var/lib/telegram-bot-api:ro

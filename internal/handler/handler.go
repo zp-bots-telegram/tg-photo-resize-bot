@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -200,6 +201,33 @@ func (h *Handler) download(ctx context.Context, b *bot.Bot, fileID string) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("getFile: %w", err)
 	}
+	// A self-hosted telegram-bot-api server running with --local returns
+	// an absolute filesystem path in FilePath. The cloud API and
+	// self-hosted-without-local return a relative path that we need to
+	// fetch over HTTP.
+	if strings.HasPrefix(file.FilePath, "/") {
+		return h.readLocal(file.FilePath)
+	}
+	return h.downloadHTTP(ctx, b, file)
+}
+
+func (h *Handler) readLocal(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open local: %w", err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, int64(h.maxInputBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > h.maxInputBytes {
+		return nil, fmt.Errorf("file exceeds %d byte cap", h.maxInputBytes)
+	}
+	return data, nil
+}
+
+func (h *Handler) downloadHTTP(ctx context.Context, b *bot.Bot, file *models.File) ([]byte, error) {
 	url := b.FileDownloadLink(file)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
